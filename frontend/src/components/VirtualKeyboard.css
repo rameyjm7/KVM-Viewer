@@ -1,0 +1,95 @@
+.simple-keyboard {
+  display: inline-block;
+  background: transparent;
+}
+
+/* enforce row layout */
+.simple-keyboard .hg-row {
+  display: flex !important;
+  justify-content: center;
+  margin: 8px 0 !important;
+}
+
+/* style each key */
+.simple-keyboard .hg-button {
+  background: #333 !important;
+  color: #fff   !important;
+  border: none  !important;
+  box-shadow: none !important;
+  border-radius: 4px !important;
+  margin: 3px !important;
+  font-size: 1rem !important;
+  padding: 12px 8px !important;
+}
+
+/* hover */
+.simple-keyboard .hg-button:hover {
+  background: #444 !important;
+}
+
+/* pressed highlight */
+.simple-keyboard .pressed {
+  background: #007AFF !important;
+  color: #fff       !important;
+}
+
+/* remove focus outline */
+.simple-keyboard .hg-button:focus {
+  outline: none !important;
+}
+/* Center the keyboard on the page */
+.simple-keyboard {
+  display: block;      /* override inline-block */
+  margin: 0 auto 20px; /* auto left/right, add bottom margin */
+}
+
+/* Make the spacebar extra wide */
+.simple-keyboard .hg-button[data-skbtn=" "] {
+  flex: 0 0 300px !important;  /* fixed width */
+  max-width: 300px !important;
+}
+.simple-keyboard {
+  display: block;
+  margin: 0 auto 20px;
+}
+
+/* horizontal rows */
+.simple-keyboard .hg-row {
+  display: flex !important;
+  justify-content: center;
+  margin-bottom: 8px !important;
+}
+
+/* base key style */
+.simple-keyboard .hg-button {
+  background: #333 !important;
+  color: #fff   !important;
+  border: none  !important;
+  box-shadow: none !important;
+  border-radius: 4px !important;
+  margin: 3px !important;
+  font-size: 1rem !important;
+  padding: 12px 8px !important;
+}
+
+/* hover */
+.simple-keyboard .hg-button:hover {
+  background: #444 !important;
+}
+
+/* no focus outline */
+.simple-keyboard .hg-button:focus {
+  outline: none !important;
+}
+
+/* pressed highlight via buttonTheme */
+.simple-keyboard .hg-pressed {
+  background: #007AFF !important;
+  color: #fff         !important;
+}
+
+/* extra-wide spacebar */
+.simple-keyboard .hg-button[data-skbtn=" "] {
+  flex: 0 0 300px !important;
+  max-width: 300px !important;
+}

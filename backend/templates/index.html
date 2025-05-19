@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Raspberry Pi Camera Stream</title>
+    <style>
+        body { background-color: #121212; color: white; font-family: Arial, sans-serif; }
+        img { display: block; margin: auto; border: 3px solid #333; }
+        h1 { text-align: center; }
+    </style>
+</head>
+<body>
+    <h1>Raspberry Pi Camera Live Stream</h1>
+    <img src="{{ url_for('video_feed') }}" width="640" height="480">
+</body>
+</html>
