@@ -1,5 +1,8 @@
 # KVM-Viewer
 
+* Work in Progress *
+
+  
 KVM-Viewer is a web-based remote interface for Pi-KVM setups. It provides:
 
 - **frontend/**: A React application for displaying a live MJPEG video stream and virtual keyboard
@@ -89,6 +92,10 @@ KVM-Viewer/
 
 - **Backend**: Adjust device paths (`/dev/video0`, `/dev/hidg0`) in `app.py` if your hardware differs.
 - **Frontend**: The video and keypress API URLs point to the current host; no additional config needed.
+
+## Photos
+![image](https://github.com/user-attachments/assets/407533b1-67f7-4850-9e68-ef7d8ceb185f)
+
 
 ## License
 
