@@ -7,7 +7,6 @@ import re
 
 app = Flask(__name__)
 CORS(app)
-
 logging.basicConfig(level=logging.INFO)
 
 
@@ -39,6 +38,10 @@ GST_PIPELINE = [
 # For demonstration, print the chosen resolution and pipeline
 print(f"Selected resolution: {width}x{height}")
 print("GST_PIPELINE =", GST_PIPELINE)
+
+
+MOUSE_DEV = '/dev/hidg1'
+last_pos = {'x': None, 'y': None}
 
 def gst_mjpeg_stream():
     proc = subprocess.Popen(
@@ -78,6 +81,7 @@ def write_release(fd, key, ctrl, shift, caps):
     # e.g. fd.write(bytes(8))
     pass
 
+# app.py
 @app.route('/keypress', methods=['POST'])
 def keypress():
     data   = request.get_json(force=True) or {}
@@ -137,6 +141,86 @@ def keypress():
 
     return jsonify(status="ok", key=keyName, action=action)
 
+
+# ---- set these to your pipeline’s resolution ----
+FEED_WIDTH  = 1920
+FEED_HEIGHT = 1080
+
+last_px = {'x': None, 'y': None}
+
+@app.route('/mouse_move', methods=['POST'])
+def mouse_move():
+    global last_px
+    data = request.get_json(force=True) or {}
+    rx   = float(data.get('x', 0.0))
+    ry   = float(data.get('y', 0.0))
+    init = bool(data.get('init', False))
+
+    # compute true absolute target on the virtual screen
+    tx = int(rx * FEED_WIDTH)
+    ty = int(ry * FEED_HEIGHT)
+
+    # on init (or first ever call), sync origin and return
+    if init or last_px['x'] is None:
+        last_px['x'], last_px['y'] = tx, ty
+        return jsonify(status="ok", init=True)
+
+    # otherwise compute delta from last synced point
+    dx = tx - last_px['x']
+    dy = ty - last_px['y']
+    last_px['x'], last_px['y'] = tx, ty
+
+    # clamp to HID’s ±127 byte range
+    dx = max(-127, min(127, dx))
+    dy = max(-127, min(127, dy))
+
+    report = bytes([0x00, dx & 0xFF, dy & 0xFF, 0x00])
+
+    if not os.path.exists(MOUSE_DEV):
+        app.logger.warning(f"Missing {MOUSE_DEV}; skipping move")
+        return jsonify(status="ok", skipped=True)
+
+    try:
+        write_mouse(report)
+    except Exception as e:
+        app.logger.error(f"Mouse move error: {e}")
+        return jsonify(status="error", error=str(e)), 500
+
+    return jsonify(status="ok")
+
+
+def write_mouse(report_bytes):
+    with open(MOUSE_DEV, 'wb') as fd:
+        fd.write(report_bytes)
+        fd.flush()
+
+
+@app.route('/mouse_down', methods=['POST'])
+def mouse_down():
+    data   = request.get_json(force=True) or {}
+    btn    = int(data.get('button', 0))
+    # HID button bits: left=0x01, right=0x02, middle=0x04
+    btn_map = {0:0x01, 2:0x02, 1:0x04}
+    bmask   = btn_map.get(btn, 0x00)
+
+    report = bytes([bmask, 0x00, 0x00, 0x00])
+    try:
+        write_mouse(report)
+    except Exception as e:
+        app.logger.error(f"Mouse down error: {e}")
+        return jsonify(status="error", error=str(e)), 500
+    return jsonify(status="ok")
+
+@app.route('/mouse_up', methods=['POST'])
+def mouse_up():
+    # release → all buttons zeroed
+    report = bytes([0x00, 0x00, 0x00, 0x00])
+    try:
+        write_mouse(report)
+    except Exception as e:
+        app.logger.error(f"Mouse up error: {e}")
+        return jsonify(status="error", error=str(e)), 500
+    return jsonify(status="ok")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, threaded=True)
