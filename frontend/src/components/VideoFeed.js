@@ -8,7 +8,7 @@ export default function VideoFeed() {
       <img
         src={videoUrl}
         alt="Video Feed"
-        style={{ width: '640px', borderRadius: '10px', border: '3px solid #007AFF' }}
+        style={{ width: '75vw', borderRadius: '10px', border: '3px solid #007AFF' }}
       />
     </div>
   );
