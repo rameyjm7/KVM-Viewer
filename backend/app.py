@@ -63,31 +63,50 @@ def video_feed():
 # ----------------------------------
 # 2) Keyboard HID (writes to hidg0)
 # ----------------------------------
+# ----------------------------------
+# 2) Keyboard HID (writes to hidg0)
+# ----------------------------------
 @app.route('/keypress', methods=['POST'])
 def keypress():
     data    = request.get_json(force=True) or {}
     keyName = data.get('key', '')
-    action  = data.get('action', '')
+    action  = data.get('action', '')   # "down" or "up"
     ctrl    = bool(data.get('ctrl', False))
     shift   = bool(data.get('shift', False))
 
     app.logger.info(f"{action.upper():6} Key={keyName!r} (ctrl={ctrl}, shift={shift})")
 
+    # Named keys
     KEY_MAP = {
         'backspace': 0x2A, 'tab': 0x2B, 'enter': 0x28,
         'escape':    0x29, 'space': 0x2C, 'capslock': 0x39,
     }
+    # Punctuation and symbols
+    PUNCT_MAP = {
+        '`':0x35, '-':0x2D, '=':0x2E,
+        '[':0x2F, ']':0x30, '\\':0x31,
+        ';':0x33, "'":0x34, ',':0x36,
+        '.':0x37, '/':0x38
+    }
 
-    if len(keyName) == 1 and keyName.isalpha():
-        code = ord(keyName.lower()) - ord('a') + 0x04
-    elif len(keyName) == 1 and keyName.isdigit():
-        code = 0x27 if keyName=='0' else 0x1E + (int(keyName)-1)
+    # Determine HID usage code
+    if len(keyName) == 1:
+        ch = keyName
+        if ch.isalpha():
+            code = ord(ch.lower()) - ord('a') + 0x04
+        elif ch.isdigit():
+            code = 0x27 if ch == '0' else 0x1E + (int(ch) - 1)
+        else:
+            code = PUNCT_MAP.get(ch, 0x00)
     else:
         code = KEY_MAP.get(keyName.lower(), 0x00)
 
+    # Modifiers: bit0=Ctrl, bit1=Shift
     mod = (0x01 if ctrl else 0x00) | (0x02 if shift else 0x00)
-    press   = bytes([mod,0x00,code,0,0,0,0,0])
-    release = bytes([0x00]*8)
+
+    # Build press/release reports
+    press_report   = bytes([mod, 0x00, code, 0, 0, 0, 0, 0])
+    release_report = bytes([0x00] * 8)
 
     hid0 = '/dev/hidg0'
     if not os.path.exists(hid0):
@@ -96,13 +115,17 @@ def keypress():
 
     try:
         with open(hid0, 'wb') as fd:
-            fd.write(press if action=='down' else release)
+            if action == 'down':
+                fd.write(press_report)
+            else:
+                fd.write(release_report)
             fd.flush()
     except Exception as e:
         app.logger.error(f"HID write error: {e}")
         return jsonify(status="error", error=str(e)), 500
 
     return jsonify(status="ok", key=keyName, action=action)
+
 
 # --------------------------------------------------
 # 3) Mouse HID with persistent FD and ESHUTDOWN retry

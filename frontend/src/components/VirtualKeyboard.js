@@ -44,75 +44,78 @@ export default function VirtualKeyboard() {
     ]
   };
 
-  // Determine which layout to render
   const layoutName = shiftHeld
     ? 'shift'
     : capsOn
       ? 'caps'
       : 'default';
 
-  // Add or remove a pressed highlight
-  const flash = (btn) => {
+  const flash = btn => {
     setButtonTheme(t => [...t, { class: 'hg-pressed', buttons: btn }]);
     setTimeout(() => {
       setButtonTheme(t => t.filter(x => x.buttons !== btn));
     }, 200);
   };
 
-  // Send key event to backend
   const sendEvent = (keyName, action) => {
     axios.post(url, {
-      key: keyName,
-      action,          // "down" or "up"
-      ctrl: ctrlHeld,
+      key:   keyName,
+      action,           // "down" or "up"
+      ctrl:  ctrlHeld,
       shift: shiftHeld,
       caps:  capsOn
     }).catch(console.error);
   };
 
-  // Handle any key-down
-  const handleKeyDown = (button) => {
-    // Normalize raw to logical button
-    let raw = button;
-    if (raw === '{space}')  raw = 'Space';
-    else if (raw === '{enter}') raw = 'Enter';
-    else if (raw === '{bksp}')  raw = 'Backspace';
-    else if (raw === '{tab}')   raw = 'Tab';
+  const handleKeyDown = button => {
+    // strip braces for tokens, leave single-char keys as-is
+    let raw = button.startsWith('{') && button.endsWith('}')
+      ? button.slice(1, -1)
+      : button;
+
+    // map a few named tokens
+    if (raw === 'space')    raw = 'Space';
+    else if (raw === 'enter') raw = 'Enter';
+    else if (raw === 'bksp')  raw = 'Backspace';
+    else if (raw === 'tab')   raw = 'Tab';
+
+    // letters: apply case
     else if (/^[a-z]$/i.test(raw)) {
-      // letters: apply case
-      if (shiftHeld || capsOn) raw = raw.toUpperCase();
-      else                     raw = raw.toLowerCase();
+      raw = (shiftHeld || capsOn)
+        ? raw.toUpperCase()
+        : raw.toLowerCase();
     }
 
-    // Manage modifiers
+    // modifiers
     if (button === '{shift}') {
-      setShiftHeld(true);
-      flash('{shift}');
+      setShiftHeld(true); flash('{shift}');
       sendEvent('Shift', 'down');
       return;
     }
     if (button === '{ctrl}') {
-      setCtrlHeld(true);
-      flash('{ctrl}');
+      setCtrlHeld(true); flash('{ctrl}');
       sendEvent('Control', 'down');
       return;
     }
     if (button === '{lock}') {
-      setCapsOn(c => !c);
-      flash('{lock}');
+      setCapsOn(c => !c); flash('{lock}');
       sendEvent('CapsLock', 'down');
       sendEvent('CapsLock', 'up');
       return;
     }
 
-    // Non-modifier key
+    // any other key (digits, punctuation) falls through as raw
     flash(button);
     sendEvent(raw, 'down');
   };
 
-  // Handle any key-up
-  const handleKeyUp = (button) => {
-    let raw = button;
+  const handleKeyUp = button => {
+    // strip braces for tokens
+    let raw = button.startsWith('{') && button.endsWith('}')
+      ? button.slice(1, -1)
+      : button;
+
+    // handle modifiers
     if (button === '{shift}') {
       setShiftHeld(false);
       sendEvent('Shift', 'up');
@@ -124,35 +127,38 @@ export default function VirtualKeyboard() {
       return;
     }
 
-    if (raw === '{space}')  raw = 'Space';
-    else if (raw === '{enter}') raw = 'Enter';
-    else if (raw === '{bksp}')  raw = 'Backspace';
-    else if (raw === '{tab}')   raw = 'Tab';
+    // map named tokens
+    if (raw === 'space')    raw = 'Space';
+    else if (raw === 'enter') raw = 'Enter';
+    else if (raw === 'bksp')  raw = 'Backspace';
+    else if (raw === 'tab')   raw = 'Tab';
+
+    // letters: apply case
     else if (/^[a-z]$/i.test(raw)) {
-      if (shiftHeld || capsOn) raw = raw.toUpperCase();
-      else                     raw = raw.toLowerCase();
+      raw = (shiftHeld || capsOn)
+        ? raw.toUpperCase()
+        : raw.toLowerCase();
     }
 
+    // send release
     sendEvent(raw, 'up');
   };
 
-  // on-screen callbacks
   const onKeyPress   = btn => handleKeyDown(btn);
   const onKeyRelease = btn => handleKeyUp(btn);
 
-  // Physical keyboard listeners
   useEffect(() => {
     const onDown = e => {
       if (e.repeat) return;
       let btn = e.key;
-      if (btn === ' ')           btn = '{space}';
-      else if (btn === 'Enter')  btn = '{enter}';
+      if (btn === ' ')            btn = '{space}';
+      else if (btn === 'Enter')   btn = '{enter}';
       else if (btn === 'Backspace') btn = '{bksp}';
-      else if (btn === 'Tab')    btn = '{tab}';
-      else if (btn === 'Shift')  btn = '{shift}';
-      else if (btn === 'Control')btn = '{ctrl}';
+      else if (btn === 'Tab')     btn = '{tab}';
+      else if (btn === 'Shift')   btn = '{shift}';
+      else if (btn === 'Control') btn = '{ctrl}';
       else if (btn === 'CapsLock') btn = '{lock}';
-      else                       btn = btn.toLowerCase();
+      else                        btn = btn.toLowerCase();
 
       if (keyboard.current.getButtonElement(btn)) {
         handleKeyDown(btn);
@@ -160,14 +166,14 @@ export default function VirtualKeyboard() {
     };
     const onUp = e => {
       let btn = e.key;
-      if (btn === ' ')           btn = '{space}';
-      else if (btn === 'Enter')  btn = '{enter}';
+      if (btn === ' ')            btn = '{space}';
+      else if (btn === 'Enter')   btn = '{enter}';
       else if (btn === 'Backspace') btn = '{bksp}';
-      else if (btn === 'Tab')    btn = '{tab}';
-      else if (btn === 'Shift')  btn = '{shift}';
-      else if (btn === 'Control')btn = '{ctrl}';
+      else if (btn === 'Tab')     btn = '{tab}';
+      else if (btn === 'Shift')   btn = '{shift}';
+      else if (btn === 'Control') btn = '{ctrl}';
       else if (btn === 'CapsLock') btn = '{lock}';
-      else                       btn = btn.toLowerCase();
+      else                        btn = btn.toLowerCase();
 
       if (keyboard.current.getButtonElement(btn)) {
         handleKeyUp(btn);
@@ -198,7 +204,7 @@ export default function VirtualKeyboard() {
         '{space}':'Space'
       }}
       buttonTheme={buttonTheme}
-      onKeyPress  ={onKeyPress}
+      onKeyPress={onKeyPress}
       onKeyReleased={onKeyRelease}
       physicalKeyboardHighlight={false}
     />
