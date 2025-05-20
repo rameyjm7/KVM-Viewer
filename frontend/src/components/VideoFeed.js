@@ -1,39 +1,47 @@
-import React, { useRef } from 'react';
+// VideoFeed.js
+
+import React, { useRef, useState } from 'react';
 import axios from 'axios';
 
 export default function VideoFeed() {
-  const imgRef = useRef();
-  const server = `http://${window.location.hostname}:5000`;
+  const imgRef    = useRef();
+  const server    = `http://${window.location.hostname}:5000`;
+  const [hidden, setHidden] = useState(false);
 
-  // Fire once when your cursor enters the image
+  // Teleport the gadget cursor *exactly* to wherever you entered
   const handleMouseEnter = e => {
-    const img  = imgRef.current;
-    const rect = img.getBoundingClientRect();
-    const x    = (e.clientX - rect.left) / rect.width;
-    const y    = (e.clientY - rect.top)  / rect.height;
+    const { left, top, width, height } = imgRef.current.getBoundingClientRect();
+    const x = (e.clientX - left) / width;
+    const y = (e.clientY - top)  / height;
 
-    axios.post(`${server}/mouse_move`, { x, y, init: true })
-         .catch(console.error);
+    setHidden(true);
+    axios
+      .post(`${server}/mouse_move`, { x, y, absolute: true })
+      .catch(console.error);
   };
 
-  // Every move after that
+  // Show your normal cursor again
+  const handleMouseLeave = () => {
+    setHidden(false);
+  };
+
+  // All subsequent moves are pure relative (scaled under the hood)
   const handleMouseMove = e => {
-    const img  = imgRef.current;
-    const rect = img.getBoundingClientRect();
-    const x    = (e.clientX - rect.left) / rect.width;
-    const y    = (e.clientY - rect.top)  / rect.height;
+    const { left, top, width, height } = imgRef.current.getBoundingClientRect();
+    const x = (e.clientX - left) / width;
+    const y = (e.clientY - top)  / height;
 
-    axios.post(`${server}/mouse_move`, { x, y })
-         .catch(console.error);
+    axios
+      .post(`${server}/mouse_move`, { x, y })
+      .catch(console.error);
   };
 
+  // Clicks map straight through
   const handleMouseDown = e =>
-    axios.post(`${server}/mouse_down`, { button: e.button })
-         .catch(console.error);
+    axios.post(`${server}/mouse_down`, { button: e.button }).catch(console.error);
 
   const handleMouseUp = e =>
-    axios.post(`${server}/mouse_up`, { button: e.button })
-         .catch(console.error);
+    axios.post(`${server}/mouse_up`,   { button: e.button }).catch(console.error);
 
   return (
     <div style={{ textAlign: 'center', marginBottom: 20 }}>
@@ -45,9 +53,10 @@ export default function VideoFeed() {
           width:       '75vw',
           borderRadius: 10,
           border:      '3px solid #007AFF',
-          cursor:      'crosshair'
+          cursor:      hidden ? 'none' : 'crosshair',
         }}
         onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
         onMouseMove={handleMouseMove}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}

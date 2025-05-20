@@ -12,10 +12,6 @@ function App() {
       disableGutters            // remove side padding so we truly hit the window edges
       sx={{ bgcolor: '#121212', minWidth: '100vw', minHeight: '100vh', color: 'white', pt: 2 }}
     >
-      <Typography variant="h5" align="center" sx={{ mb: 2 }}>
-        Pi-KVM Remote Interface
-      </Typography>
-
       {/* Video takes the full width; keyboard sits below it */}
       <Box sx={{ width: '100%' }}>
         <VideoFeed />            {/* make sure the video element inside uses width: 100% */}
