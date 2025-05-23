@@ -5,6 +5,25 @@ import logging
 import os
 import re
 import errno
+import threading
+import time
+
+def start_frontend():
+    frontend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend'))
+    npm_cmd = ['npm', 'start']
+    try:
+        process = subprocess.Popen(
+            npm_cmd,
+            cwd=frontend_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+            universal_newlines=True
+        )
+        for line in process.stdout:
+            logging.info(f"[Frontend] {line.strip()}")
+    except Exception as e:
+        logging.error(f"Failed to start frontend: {e}")
 
 app = Flask(__name__)
 CORS(app)
@@ -60,9 +79,6 @@ def video_feed():
         mimetype='multipart/x-mixed-replace; boundary=frame'
     )
 
-# ----------------------------------
-# 2) Keyboard HID (writes to hidg0)
-# ----------------------------------
 # ----------------------------------
 # 2) Keyboard HID (writes to hidg0)
 # ----------------------------------
@@ -137,7 +153,7 @@ def _open_mouse():
     global _mouse_fd
     if _mouse_fd is None:
         try:
-            _mouse_fd = os.open(MOUSE_DEV, os.O_WRONLY | os.O_NONBLOCK)
+            _mouse_fd = os.open(MOUSE_DEV, os.O_WRONLY)
         except OSError as e:
             app.logger.error(f"Cannot open {MOUSE_DEV}: {e}")
             _mouse_fd = None
@@ -163,56 +179,75 @@ def write_mouse(report: bytes):
         else:
             raise
 
-# track last relative coords for scaled movement
-last_rel = {'x': None, 'y': None}
+# -----------------------------------------------------------------
+# Mouse motion  – now honours current position for absolute jumps
+# -----------------------------------------------------------------
+# -----------------------------------------------------------------
+# Mouse motion — perfect alignment, even from unknown start position
+# -----------------------------------------------------------------
+last_px = {'x': None, 'y': None}          # where we *believe* the guest cursor is
 
 @app.route('/mouse_move', methods=['POST'])
 def mouse_move():
     """
-    Handles both relative motion and absolute teleport.
-    Send JSON with:
-      - x (0..1), y (0..1)
-      - init: true   -> teleport from 0,0 once (old behavior)
-      - absolute: true -> teleport from 0,0 every time
-      - omit flags for scaled relative motion
+    Three use-cases
+      1) { px, py, absolute_px:true }     ← jump to *exact* pixel on entry
+      2) { x,  y }                        ← scaled relative (fractions 0-1)
+      3) { x,  y, init:true }             ← legacy origin sync
     """
-    global last_rel
-    data     = request.get_json(force=True) or {}
-    rx       = float(data.get('x', 0.0))
-    ry       = float(data.get('y', 0.0))
-    init     = bool(data.get('init', False))
-    absolute = bool(data.get('absolute', False))
+    global last_px
+    data       = request.get_json(force=True) or {}
 
-    # compute target in guest pixels
+    # ---------- absolute pixel teleport (entry / leave) ----------
+    if data.get('absolute_px'):
+        tx = int(data['px'])
+        ty = int(data['py'])
+        # If we have no idea where the guest pointer is, move to corner first
+        if last_px['x'] is None:
+            _chunk_move(-127 * 100, -127 * 100)   # fling to 0,0 safely
+            last_px['x'], last_px['y'] = 0, 0
+
+        _chunk_move(tx - last_px['x'], ty - last_px['y'])
+        last_px['x'], last_px['y'] = tx, ty
+        return jsonify(status="ok")
+
+    # ---------- one-time origin sync (legacy) ----------
+    if data.get('init'):
+        tx = int(float(data['x']) * FEED_WIDTH)
+        ty = int(float(data['y']) * FEED_HEIGHT)
+        last_px['x'], last_px['y'] = tx, ty
+        return jsonify(status="ok", init=True)
+
+    # ---------- normal relative motion ----------
+    rx = float(data.get('x', 0.0))
+    ry = float(data.get('y', 0.0))
     tx = int(rx * FEED_WIDTH)
     ty = int(ry * FEED_HEIGHT)
 
-    if absolute:
-        # teleport from (0,0)
-        dx, dy = tx, ty
-    elif init or last_rel['x'] is None:
-        # initial teleport once
-        dx, dy = tx, ty
-    else:
-        # scaled relative movement
-        dx = int((rx - last_rel['x']) * FEED_WIDTH)
-        dy = int((ry - last_rel['y']) * FEED_HEIGHT)
+    if last_px['x'] is None:
+        last_px['x'], last_px['y'] = tx, ty        # first call: just park tracker
+        return jsonify(status="ok")
 
-    # clamp to HID’s ±127
-    dx = max(-127, min(127, dx))
-    dy = max(-127, min(127, dy))
-
-    # update origin
-    last_rel['x'], last_rel['y'] = rx, ry
-
-    report = bytes([0x00, dx & 0xFF, dy & 0xFF, 0x00])
-    try:
-        write_mouse(report)
-    except Exception as e:
-        app.logger.error(f"Mouse move error: {e}")
-        return jsonify(status="error", error=str(e)), 500
-
+    _chunk_move(tx - last_px['x'], ty - last_px['y'])
+    last_px['x'], last_px['y'] = tx, ty
     return jsonify(status="ok")
+
+
+# --------------------------------------------------
+# Helper: emit as many HID packets as needed
+# --------------------------------------------------
+def _chunk_move(dx, dy):
+    """Send relative motion, splitting into ±127 hops so nothing is clipped."""
+    while abs(dx) > 127 or abs(dy) > 127:
+        step_x = max(-127, min(127, dx))
+        step_y = max(-127, min(127, dy))
+        _hid_move(step_x, step_y)
+        dx -= step_x
+        dy -= step_y
+    _hid_move(dx, dy)
+
+def _hid_move(dx, dy):
+    write_mouse(bytes([0x00, dx & 0xFF, dy & 0xFF, 0x00]))
 
 @app.route('/mouse_down', methods=['POST'])
 def mouse_down():
@@ -236,8 +271,33 @@ def mouse_up():
         return jsonify(status="error", error=str(e)), 500
     return jsonify(status="ok")
 
+# ----------------------------
+# 4) Mouse wheel / scroll HID
+# ----------------------------
+@app.route('/mouse_wheel', methods=['POST'])
+def mouse_wheel():
+    """
+    Receives JSON { wheel: int } where wheel is -127..127.
+    Positive = scroll down, Negative = scroll up (USB HID convention).
+    """
+    data = request.get_json(force=True) or {}
+    w = int(data.get('wheel', 0))
+    # clamp to signed byte range
+    w = max(-127, min(127, w))
+
+    # build HID report: [buttons=0, dx=0, dy=0, wheel]
+    report = bytes([0x00, 0x00, 0x00, w & 0xFF])
+    try:
+        write_mouse(report)
+    except Exception as e:
+        app.logger.error(f"Mouse wheel error: {e}")
+        return jsonify(status="error", error=str(e)), 500
+
+    return jsonify(status="ok", wheel=w)
+
 # -------------------
 # 4) Run Flask server
 # -------------------
 if __name__ == '__main__':
+    threading.Thread(target=start_frontend, daemon=True).start()
     app.run(host='0.0.0.0', port=5000, threaded=True)

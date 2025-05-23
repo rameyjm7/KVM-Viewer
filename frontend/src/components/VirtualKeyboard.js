@@ -1,12 +1,12 @@
 // VirtualKeyboard.jsx
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Keyboard from 'react-simple-keyboard';
 import axios from 'axios';
 import 'react-simple-keyboard/build/css/index.css';
 import './VirtualKeyboard.css';
 
-export default function VirtualKeyboard() {
+export default function VirtualKeyboard({ visible }) {
   const keyboard = useRef();
 
   // Modifier states
@@ -67,20 +67,18 @@ export default function VirtualKeyboard() {
     }).catch(console.error);
   };
 
-  const handleKeyDown = button => {
-    // strip braces for tokens, leave single-char keys as-is
+  const handleKeyDown = useCallback(button => {
     let raw = button.startsWith('{') && button.endsWith('}')
       ? button.slice(1, -1)
       : button;
 
-    // map a few named tokens
+    // map named tokens
     if (raw === 'space')    raw = 'Space';
     else if (raw === 'enter') raw = 'Enter';
     else if (raw === 'bksp')  raw = 'Backspace';
     else if (raw === 'tab')   raw = 'Tab';
-
-    // letters: apply case
     else if (/^[a-z]$/i.test(raw)) {
+      // letters: apply case
       raw = (shiftHeld || capsOn)
         ? raw.toUpperCase()
         : raw.toLowerCase();
@@ -89,93 +87,67 @@ export default function VirtualKeyboard() {
     // modifiers
     if (button === '{shift}') {
       setShiftHeld(true); flash('{shift}');
-      sendEvent('Shift', 'down');
+      sendEvent('Shift','down');
       return;
     }
     if (button === '{ctrl}') {
       setCtrlHeld(true); flash('{ctrl}');
-      sendEvent('Control', 'down');
+      sendEvent('Control','down');
       return;
     }
     if (button === '{lock}') {
-      setCapsOn(c => !c); flash('{lock}');
-      sendEvent('CapsLock', 'down');
-      sendEvent('CapsLock', 'up');
+      setCapsOn(c=>!c); flash('{lock}');
+      sendEvent('CapsLock','down');
+      sendEvent('CapsLock','up');
       return;
     }
 
-    // any other key (digits, punctuation) falls through as raw
+    // non-modifier: tap down+up
     flash(button);
-    sendEvent(raw, 'down');
-  };
+    sendEvent(raw,'down');
+    setTimeout(() => sendEvent(raw,'up'), 50);
+  }, [capsOn, shiftHeld, ctrlHeld]);
 
-  const handleKeyUp = button => {
-    // strip braces for tokens
-    let raw = button.startsWith('{') && button.endsWith('}')
-      ? button.slice(1, -1)
-      : button;
-
-    // handle modifiers
+  const handleKeyUp = useCallback(button => {
     if (button === '{shift}') {
       setShiftHeld(false);
-      sendEvent('Shift', 'up');
-      return;
-    }
-    if (button === '{ctrl}') {
+      sendEvent('Shift','up');
+    } else if (button === '{ctrl}') {
       setCtrlHeld(false);
-      sendEvent('Control', 'up');
-      return;
+      sendEvent('Control','up');
     }
+  }, []);
 
-    // map named tokens
-    if (raw === 'space')    raw = 'Space';
-    else if (raw === 'enter') raw = 'Enter';
-    else if (raw === 'bksp')  raw = 'Backspace';
-    else if (raw === 'tab')   raw = 'Tab';
-
-    // letters: apply case
-    else if (/^[a-z]$/i.test(raw)) {
-      raw = (shiftHeld || capsOn)
-        ? raw.toUpperCase()
-        : raw.toLowerCase();
-    }
-
-    // send release
-    sendEvent(raw, 'up');
-  };
-
-  const onKeyPress   = btn => handleKeyDown(btn);
-  const onKeyRelease = btn => handleKeyUp(btn);
-
+  // physical keyboard listeners
   useEffect(() => {
     const onDown = e => {
       if (e.repeat) return;
-      let btn = e.key;
-      if (btn === ' ')            btn = '{space}';
-      else if (btn === 'Enter')   btn = '{enter}';
-      else if (btn === 'Backspace') btn = '{bksp}';
-      else if (btn === 'Tab')     btn = '{tab}';
-      else if (btn === 'Shift')   btn = '{shift}';
-      else if (btn === 'Control') btn = '{ctrl}';
-      else if (btn === 'CapsLock') btn = '{lock}';
-      else                        btn = btn.toLowerCase();
+      let btn = e.key === ' ' ? '{space}' :
+                e.key === 'Enter' ? '{enter}' :
+                e.key === 'Backspace' ? '{bksp}' :
+                e.key === 'Tab' ? '{tab}' :
+                e.key === 'Shift' ? '{shift}' :
+                e.key === 'Control' ? '{ctrl}' :
+                e.key === 'CapsLock' ? '{lock}' :
+                e.key.toLowerCase();
 
-      if (keyboard.current.getButtonElement(btn)) {
+      const kb = keyboard.current;
+      if (kb?.getButtonElement(btn)) {
         handleKeyDown(btn);
       }
     };
     const onUp = e => {
-      let btn = e.key;
-      if (btn === ' ')            btn = '{space}';
-      else if (btn === 'Enter')   btn = '{enter}';
-      else if (btn === 'Backspace') btn = '{bksp}';
-      else if (btn === 'Tab')     btn = '{tab}';
-      else if (btn === 'Shift')   btn = '{shift}';
-      else if (btn === 'Control') btn = '{ctrl}';
-      else if (btn === 'CapsLock') btn = '{lock}';
-      else                        btn = btn.toLowerCase();
+      let btn = e.key === ' ' ? '{space}' :
+                e.key === 'Enter' ? '{enter}' :
+                e.key === 'Backspace' ? '{bksp}' :
+                e.key === 'Tab' ? '{tab}' :
+                e.key === 'Shift' ? '{shift}' :
+                e.key === 'Control' ? '{ctrl}' :
+                e.key === 'CapsLock' ? '{lock}' :
+                e.key.toLowerCase();
 
-      if (keyboard.current.getButtonElement(btn)) {
+      const kb = keyboard.current;
+      if (kb?.getButtonElement(btn)) {
         handleKeyUp(btn);
       }
     };
@@ -186,27 +158,24 @@ export default function VirtualKeyboard() {
       window.removeEventListener('keydown', onDown);
       window.removeEventListener('keyup',   onUp);
     };
-  }, [capsOn, shiftHeld, ctrlHeld]);
+  }, [handleKeyDown, handleKeyUp]);
 
   return (
-    <Keyboard
-      keyboardRef={r => (keyboard.current = r)}
-      theme="hg-theme-dark"
-      layoutName={layoutName}
-      layout={layouts}
-      display={{
-        '{bksp}': '⌫',
-        '{tab}':  'Tab',
-        '{enter}':'Enter',
-        '{shift}':'Shift',
-        '{lock}': 'Caps',
-        '{ctrl}': 'Ctrl',
-        '{space}':'Space'
-      }}
-      buttonTheme={buttonTheme}
-      onKeyPress={onKeyPress}
-      onKeyReleased={onKeyRelease}
-      physicalKeyboardHighlight={false}
-    />
+    <div style={{ display: visible ? 'block' : 'none' }}>
+      <Keyboard
+        keyboardRef={r => (keyboard.current = r)}
+        theme="hg-theme-dark"
+        layoutName={layoutName}
+        layout={layouts}
+        display={{
+          '{bksp}':'⌫','{tab}':'Tab','{enter}':'Enter',
+          '{shift}':'Shift','{lock}':'Caps','{ctrl}':'Ctrl','{space}':'Space'
+        }}
+        buttonTheme={buttonTheme}
+        onKeyPress={handleKeyDown}
+        onKeyReleased={handleKeyUp}
+        physicalKeyboardHighlight={false}
+      />
+    </div>
   );
 }
